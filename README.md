@@ -11,11 +11,11 @@ Much of it was inspired by the [lucidrains](https://github.com/lucidrains/denois
 - Python 3.9
 - CUDA 11.5
 
-# Installation
-1. `git clone `
+# Running
+1. `git clone https://github.com/DavidRuhe/simple-variational-diffusion-models.git`
 2. `cd simple-variational-diffusion-models`
 3. `source activate_py3.sh`
-4. `python`
+4. `python main.py`
 
 # To Do
 1. Network adjustments reported in Appendix.
