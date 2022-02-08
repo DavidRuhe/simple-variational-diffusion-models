@@ -1,6 +1,6 @@
 # Simple Variational Diffusion Models
 
-!(src/results/sample-195.png)
+![](src/results/sample-195.png)
 
 > Note! This is still work in progress. If you lke to contribute, please leave a pull request.
 
