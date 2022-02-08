@@ -1,5 +1,7 @@
 # Simple Variational Diffusion Models
 
+!(src/results/sample-195.png)
+
 > Note! This is still work in progress. If you lke to contribute, please leave a pull request.
 
 A simple (~600 line) PyTorch implementation of the "[Variational Diffusion Models](https://arxiv.org/abs/2107.00630)" paper by Kingma et al.
