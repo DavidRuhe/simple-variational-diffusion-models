@@ -19,6 +19,10 @@ def gaussian_kl(mu1, var1, mu2=None, var2=None):
     return 0.5 * (torch.log(var2 / var1) + (var1 + (mu1 - mu2).pow(2)) / var2 - 1)
 
 
+def standard_cdf(x):
+    return 0.5 * (1 + torch.erf(x / math.sqrt(2)))
+
+
 def cycle(dl):
     while True:
         for data in dl:
@@ -395,7 +399,7 @@ class GaussianDiffusion(nn.Module):
     def sample_loop(self, shape):
 
         batch_size = shape[0]
-        img = torch.randn(shape, device=self.device)
+        z = torch.randn(shape, device=self.device)
 
         timesteps = torch.linspace(0, 1, self.num_timesteps)
 
@@ -405,11 +409,37 @@ class GaussianDiffusion(nn.Module):
             total=self.num_timesteps,
         ):
 
-            t = torch.full((batch_size,), timesteps[i], device=img.device)
-            s = torch.full((batch_size,), timesteps[i - 1], device=img.device)
+            t = torch.full((batch_size,), timesteps[i], device=z.device)
+            s = torch.full((batch_size,), timesteps[i - 1], device=z.device)
 
-            img = self.p_zs_zt_sample(img, t=t, s=s)
-        return img
+            z = self.p_zs_zt_sample(z, t=t, s=s)
+
+        logsnr_0, _ = self.snrnet(torch.zeros((batch_size,), device=z.device))
+        alpha_sq_0 = torch.sigmoid(logsnr_0)[:, None, None, None]
+        sigmasq_0 = 1 - alpha_sq_0
+        sigma_0 = sigmasq_0.sqrt()
+
+        # Get p(x | z_0)
+        d = 1 / 255
+        X = torch.linspace(-1, 1, 256)
+        p_x_z0 = []
+        for x in X:
+            if x == -1:
+                p = standard_cdf((x + d - z) / sigma_0)
+            elif x == 1:
+                p = 1 - standard_cdf((x - d - z) / sigma_0)
+            else:
+                p = standard_cdf((x + d - z) / sigma_0) - standard_cdf((x - d - z) / sigma_0)
+            p_x_z0.append(p)
+
+        p_x_z0 = torch.stack(p_x_z0, dim=1)
+
+        # Sample
+        cumsum = torch.cumsum(p_x_z0, dim=1)
+        r = torch.rand_like(cumsum)
+        x = torch.max(cumsum > r, dim=1)[1]
+
+        return x
 
     @torch.no_grad()
     def sample(self, batch_size=16):
@@ -442,6 +472,28 @@ class GaussianDiffusion(nn.Module):
 
         return alpha_tbars * zs, sigma_tbars, norm_nlogsnr_t
 
+    def prior_loss(self, x, batch_size):
+        logsnr_1, _ = self.snrnet(torch.ones((batch_size,), device=x.device))
+        alpha_sq_1 = torch.sigmoid(logsnr_1)[:, None, None, None]
+        sigmasq_1 = 1 - alpha_sq_1
+        alpha_1 = alpha_sq_1.sqrt()
+        mu_1 = alpha_1 * x
+        return gaussian_kl(mu_1, sigmasq_1).sum() / batch_size
+
+    def data_likelihood(self, x, batch_size):
+        logsnr_0, _ = self.snrnet(torch.zeros((1,), device=x.device))
+        alpha_sq_0 = torch.sigmoid(logsnr_0)[:, None, None, None].repeat(*x.shape)
+        sigmasq_0 = 1 - alpha_sq_0
+        alpha_0 = alpha_sq_0.sqrt()
+        mu_0 = alpha_0 * x
+        sigma_0 = sigmasq_0.sqrt()
+        d = 1 / 255
+        p_x_z0 = standard_cdf((x + d - mu_0) / sigma_0) - standard_cdf((x - d - mu_0) / sigma_0)
+        p_x_z0[x == 1] = 1 - standard_cdf((x[x == 1] - d - mu_0[x == 1]) / sigma_0[x == 1])
+        p_x_z0[x == -1] = standard_cdf((x[x == -1] + d - mu_0[x == -1]) / sigma_0[x == -1])
+        nll = -torch.log(p_x_z0)
+        return nll.sum() / batch_size
+
     def get_loss(self, x):
 
         batch_size = len(x)
@@ -465,12 +517,10 @@ class GaussianDiffusion(nn.Module):
             * F.mse_loss(e, e_hat, reduction="none").sum(dim=(1, 2, 3))
         )
         diffusion_loss = diffusion_loss.sum() / batch_size
+        prior_loss = self.prior_loss(x, batch_size)
+        data_loss = self.data_likelihood(x, batch_size)
 
-        mu_z1_x, sigma_z1_x, _ = self.q_zt_zs(zs=x, t=torch.ones_like(t))
-        prior_kl = gaussian_kl(mu_z1_x, sigma_z1_x)
-        prior_loss = prior_kl.sum() / batch_size
-
-        loss = diffusion_loss + prior_loss
+        loss = diffusion_loss + prior_loss + data_loss
 
         return loss
 
@@ -580,9 +630,9 @@ class Trainer(object):
             map(lambda n: self.ema_model.sample(batch_size=n), batches)
         )
         all_images = torch.cat(all_images_list, dim=0)
-        all_images = (all_images + 1) * 0.5  # Normalize
+        # all_images = (all_images + 1) * 0.5  # Normalize
         utils.save_image(
-            all_images,
+            all_images / 255,
             os.path.join(self.results_folder, f"sample-{milestone}.png"),
             nrow=int(math.sqrt(self.save_n_images)),
         )
