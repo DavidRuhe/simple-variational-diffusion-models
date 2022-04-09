@@ -2,14 +2,14 @@
 
 ![](src/results/sample-195.png)
 
-> Note! This is still work in progress. If you lke to contribute, please leave a pull request.
+> Note! This is still work in progress and may contain errors. If you lke to contribute, please leave a pull request.
 
 A simple (~600 line) PyTorch implementation of the "[Variational Diffusion Models](https://arxiv.org/abs/2107.00630)" paper by Kingma et al.
 Much of it was inspired by the [lucidrains](https://github.com/lucidrains/denoising-diffusion-pytorch) and [revsic](https://github.com/revsic/jax-variational-diffwave) repositories.
 
 [Most of the paper and code are documented on my blog post](https://davidruhe.github.io/notes/Variational-Diffusion-Models). If any part of either the code or the blog is not well-documented. Please let me know!
 
-Most of the code was inspired by other repositories, see references below.
+Please also see references below.
 
 # Requirements
 - Python 3.9
