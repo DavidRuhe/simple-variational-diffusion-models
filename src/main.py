@@ -401,10 +401,12 @@ class GaussianDiffusion(nn.Module):
         batch_size = shape[0]
         z = torch.randn(shape, device=self.device)
 
-        timesteps = torch.linspace(0, 1, self.num_timesteps)
+        # modified below 2 lines
+        timesteps = torch.arange(0, 1, 1/self.num_timesteps)
+        timesteps = torch.cat((timesteps, torch.tensor([1])))
 
         for i in tqdm(
-            reversed(range(1, self.num_timesteps)),
+            reversed(range(1, self.num_timesteps+1)), # also modified here
             desc="sampling loop time step",
             total=self.num_timesteps,
         ):
